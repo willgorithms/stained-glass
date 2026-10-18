@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import type { Piece } from './pack'
-import { polyVerticalX, polyHorizontalX } from './geom'
+import { polyVerticalX, polyHorizontalX, bbox } from './geom'
+import type { Pt } from './geom'
 
 /** Options for {@link patternPdf}, all lengths in mm. */
 export interface PdfOpts {
@@ -20,6 +21,11 @@ export interface PdfOpts {
   patternWmm: number
   /** Real-world height of the whole pattern. */
   patternHmm: number
+  /**
+   * The lead-work network's region outlines, in mm. Filled black so the
+   * pattern reproduces the art's line work and no white shows between pieces.
+   */
+  leadLoopsMm?: Pt[][]
 }
 
 const MM = 72 / 25.4
@@ -109,6 +115,26 @@ export async function patternPdf(pieces: Piece[], o: PdfOpts): Promise<Uint8Arra
 
       const drawSeg = (x0: number, y0: number, x1: number, y1: number, w: number, col = black) =>
         page.drawLine({ start: { x: X(x0), y: Y(y0) }, end: { x: X(x1), y: Y(y1) }, thickness: w * MM, color: col })
+
+      // lead work: fill the whole line network black before stroking seams
+      const dGap = (o.leadLoopsMm ?? [])
+        .filter((loop) => {
+          const b = bbox(loop)
+          return (
+            b.x * k + b.w * k >= ox && b.x * k <= ox + tw &&
+            b.y * k + b.h * k >= oy && b.y * k <= oy + th
+          )
+        })
+        .map(
+          (loop) =>
+            'M' +
+            // drawSvgPath emits a Y-flip cm — feed it negated Y so the fill
+            // lands at the right spot instead of off the page
+            loop.map((q) => `${X(q.x * k).toFixed(2)} ${(-Y(q.y * k)).toFixed(2)}`).join('L') +
+            'Z',
+        )
+        .join('')
+      if (dGap) page.drawSvgPath(dGap, { color: black })
 
       for (const p of pieces) {
         for (const loop of p.patternLoopsMm) {

@@ -26,7 +26,6 @@ const img = {
 } as ImageData
 
 const params = {
-  patternWmm: wmm, patternHmm: hmm, minAreaMm2: 3, expandPx: 20,
   simplifyMm: 0.15, guideShrinkMm: 0.5, lineTol: 48, paletteTol: 24,
 }
 const det = runDetect(img, params)

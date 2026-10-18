@@ -10,7 +10,6 @@ import { loadPng } from './helpers'
 
 const DEFAULTS = {
   minAreaMm2: 3,
-  expandPx: 20,
   simplifyMm: 0.15,
   guideShrinkMm: 0.5,
   lineTol: 48,
@@ -49,7 +48,6 @@ describe('e2e: real patterns', () => {
         patternWmm: f.patternWmm,
         patternHmm: f.patternHmm,
         minAreaMm2: DEFAULTS.minAreaMm2,
-        expandPx: DEFAULTS.expandPx,
         simplifyMm: DEFAULTS.simplifyMm,
         guideShrinkMm: DEFAULTS.guideShrinkMm,
         lineTol: DEFAULTS.lineTol,
@@ -135,7 +133,6 @@ describe('e2e: real patterns', () => {
           patternWmm: f.patternWmm,
           patternHmm: f.patternHmm,
           minAreaMm2: DEFAULTS.minAreaMm2,
-          expandPx: DEFAULTS.expandPx,
           simplifyMm: DEFAULTS.simplifyMm,
           guideShrinkMm: DEFAULTS.guideShrinkMm,
           lineTol: DEFAULTS.lineTol,

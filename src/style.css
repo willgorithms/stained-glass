@@ -231,7 +231,9 @@ canvas {
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 28px rgba(0, 0, 0, 0.4);
   max-width: 100%;
 }
-#piecesCanvas { width: 100%; cursor: pointer; }
+/* pieces preview floats on the page: transparent element background lets the
+   dark page show through the erased lead channels between glass pieces */
+#piecesCanvas { width: 100%; cursor: pointer; background: transparent; box-shadow: none; }
 
 #paletteHost { display: flex; flex-wrap: wrap; gap: 7px; }
 .swatch {

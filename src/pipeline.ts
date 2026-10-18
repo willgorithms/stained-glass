@@ -11,8 +11,6 @@ export interface PipelineParams {
   patternHmm: number
   /** Minimum piece area in mm²; smaller specks are dropped. */
   minAreaMm2: number
-  /** Max px distance a piece may claim line pixels (voronoi reach). */
-  expandPx: number
   /** Outline simplification tolerance in mm. */
   simplifyMm: number
   /** Inward erosion applied to guide outlines, in mm (foil allowance). */
@@ -40,6 +38,8 @@ export interface PipelineResult {
   background: number
   /** Outlines of those regions, in px (preview only). */
   bgLoopsPx: Pt[][][]
+  /** The lead-work network's region outlines, in mm — filled/erased by outputs. */
+  leadLoopsMm: Pt[][]
   lineRgb: [number, number, number] | null
   imgW: number
   imgH: number
@@ -54,7 +54,7 @@ export function runDetect(img: ImageData, p: PipelineParams): PipelineResult {
   const mmX = p.patternWmm / img.width
   const mmY = p.patternHmm / img.height
   const shrinkPx = p.guideShrinkMm / ((mmX + mmY) / 2)
-  const det = detect(img, { expandPx: p.expandPx, shrinkPx, lineTol: p.lineTol })
+  const det = detect(img, { shrinkPx, lineTol: p.lineTol })
   const minPx = p.minAreaMm2 / (mmX * mmY)
 
   // filter on pre-expansion size: a speck must not inflate itself out of the filter
@@ -129,6 +129,9 @@ export function runDetect(img: ImageData, p: PipelineParams): PipelineResult {
     dropped: det.pieces.length - kept.length,
     background: det.background,
     bgLoopsPx: det.bgLoopsPx,
+    leadLoopsMm: det.leadLoopsPx.flatMap((loops) =>
+      loops.map((loop) => simplifyClosed(loop.map(toMm), p.simplifyMm)),
+    ),
     lineRgb: det.lineRgb,
     imgW: det.width,
     imgH: det.height,

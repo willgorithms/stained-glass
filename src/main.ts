@@ -88,9 +88,8 @@ function params(): PipelineParams & {
     patternWmm: len('patternWmm'),
     patternHmm: len('patternHmm'),
     minAreaMm2: area('minAreaMm2'),
-    expandPx: num('expandPx'),
     simplifyMm: len('simplifyMm'),
-    guideShrinkMm: len('guideShrinkMm'),
+    guideShrinkMm: Math.max(0, len('guideShrinkMm')),
     lineTol: num('lineTol'),
     paletteTol: num('paletteTol'),
     plateW: len('plateW'),
@@ -213,9 +212,9 @@ const checker = (ctx: CanvasRenderingContext2D): CanvasPattern | null => {
     const t = document.createElement('canvas')
     t.width = t.height = 16
     const c2 = t.getContext('2d')!
-    c2.fillStyle = '#e6e6e6'
+    c2.fillStyle = 'rgba(255,255,255,0.05)'
     c2.fillRect(0, 0, 16, 16)
-    c2.fillStyle = '#d6d6d6'
+    c2.fillStyle = 'rgba(255,255,255,0.11)'
     c2.fillRect(0, 0, 8, 8)
     c2.fillRect(8, 8, 8, 8)
     checkerPat = ctx.createPattern(t, 'repeat')
@@ -268,8 +267,10 @@ function drawPalette() {
 }
 
 /**
- * Draw the piece-outlines preview: faint source image, checkerboard over
- * detected background, and each piece tinted in its palette color.
+ * Draw the piece-outlines preview at guide size: pieces float on the page —
+ * the canvas stays transparent so the gaps between them (lead work plus the
+ * guide-shrink margin) show the page background. Detected background regions
+ * get a subtle checkerboard.
  */
 function drawPieces() {
   const c = $('piecesCanvas') as unknown as HTMLCanvasElement
@@ -280,16 +281,7 @@ function drawPieces() {
   c.width = W
   c.height = Math.round(imgData.height * s)
   c.style.width = '100%'
-  ctx.fillStyle = '#fff'
-  ctx.fillRect(0, 0, c.width, c.height)
-  // faint source image
-  const tmp = document.createElement('canvas')
-  tmp.width = imgData.width
-  tmp.height = imgData.height
-  tmp.getContext('2d')!.putImageData(imgData, 0, 0)
-  ctx.globalAlpha = 0.25
-  ctx.drawImage(tmp, 0, 0, c.width, c.height)
-  ctx.globalAlpha = 1
+  ctx.clearRect(0, 0, c.width, c.height)
 
   // negative space: subtle checkerboard where detection found background
   const pat = checker(ctx)
@@ -313,10 +305,12 @@ function drawPieces() {
   const mmy = p.patternHmm / imgData.height
   const toPx = (xmm: number, ymm: number): [number, number] => [(xmm / mmx) * s, (ymm / mmy) * s]
 
+  // pieces render at guide size: the real glass gets cut to the guides, so
+  // the preview shrinks with guideShrinkMm and the seams widen accordingly
   for (const pc of pieces) {
     const off = excluded.has(pc.id)
     const hl = highlightColor === null || pc.colorIdx === highlightColor
-    for (const loop of pc.patternLoopsMm) {
+    for (const loop of pc.guideLoopsMm) {
       ctx.beginPath()
       loop.forEach((q, i) => {
         const [x, y] = toPx(q.x, q.y)
@@ -330,16 +324,47 @@ function drawPieces() {
       ctx.globalAlpha = 1
       if (off) {
         ctx.setLineDash([3, 3])
-        ctx.strokeStyle = 'rgba(0,0,0,0.4)'
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)'
       } else {
-        ctx.strokeStyle = hl ? '#000' : 'rgba(0,0,0,0.25)'
+        ctx.strokeStyle = highlightColor !== null && hl ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.55)'
       }
       ctx.lineWidth = highlightColor !== null && hl && !off ? 1.6 : 0.8
       ctx.stroke()
       ctx.setLineDash([])
     }
+  }
+
+  // punch the lead network out of the piece fills: lead regions overlap
+  // claimed piece rims, so they must be erased (not painted) to stay
+  // transparent and let the page background show through
+  if (lastDet?.leadLoopsMm.length) {
+    ctx.save()
+    ctx.globalCompositeOperation = 'destination-out'
+    ctx.beginPath()
+    for (const loop of lastDet.leadLoopsMm) {
+      loop.forEach((q, i) => {
+        const [x, y] = toPx(q.x, q.y)
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      })
+      ctx.closePath()
+    }
+    ctx.fillStyle = '#000'
+    ctx.fill()
+    ctx.restore()
+  }
+
+  for (const pc of pieces) {
+    const off = excluded.has(pc.id)
+    const hl = highlightColor === null || pc.colorIdx === highlightColor
     const [cx, cy] = toPx(pc.centroidMm.x, pc.centroidMm.y)
-    ctx.fillStyle = off ? 'rgba(0,0,0,0.25)' : hl ? '#000' : 'rgba(0,0,0,0.3)'
+    const rgb = palette[pc.colorIdx]?.rgb ?? pc.fillRgb
+    const lum = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
+    ctx.fillStyle = off
+      ? 'rgba(255,255,255,0.35)'
+      : hl
+        ? lum > 140 ? '#111' : '#fff'
+        : 'rgba(255,255,255,0.55)'
     ctx.font = 'bold 12px system-ui'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
@@ -449,6 +474,7 @@ function drawDownloads(p: ReturnType<typeof params>) {
       pageWmm: p.pageWmm, pageHmm: p.pageHmm, overlapMm: p.overlapMm, marginMm: p.marginMm,
       scalePct: p.scalePct, lineWmm: p.lineWmm,
       patternWmm: p.patternWmm, patternHmm: p.patternHmm,
+      leadLoopsMm: lastDet?.leadLoopsMm,
     })
   mkBtn('pattern.pdf', async () =>
     new Blob([await pdfBytes() as unknown as BlobPart], { type: 'application/pdf' }))

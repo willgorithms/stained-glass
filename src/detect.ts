@@ -25,14 +25,19 @@ export interface Detected {
   background: number
   /** Outlines of those background regions (preview only). */
   bgLoopsPx: Pt[][][]
+  /**
+   * Outlines of the lead work itself: every connected line-pixel region,
+   * traced at the art's own outer edge. The pattern PDF fills them black and
+   * the preview erases them to transparency, so thin runs and thick junctions
+   * render as one uniform lead network.
+   */
+  leadLoopsPx: Pt[][][]
   width: number
   height: number
 }
 
 /** Tuning knobs for {@link detect}. */
 export interface DetectOpts {
-  /** Max px distance a piece may claim line pixels (voronoi reach). */
-  expandPx: number
   /** Inward erosion for guide outlines, in px. `0` skips erosion. */
   shrinkPx: number
   /** RGB distance from the detected line color that still counts as line. */
@@ -89,10 +94,14 @@ function estimateLineColor(d: Uint8ClampedArray): [number, number, number] | nul
  * Segment a pattern image into glass pieces. Pieces = pixels far from the line
  * color; lines = near it (or transparent = outside, never claimed). After
  * component labeling, line pixels are claimed by the nearest piece via
- * multi-source BFS so the traced boundary lands on the line center.
+ * multi-source BFS so the traced boundary lands on the line center. The claim
+ * reach is capped at the measured half-width of the line network: pieces then
+ * meet on the centerline of straight runs but wrap junction blobs in a smooth
+ * offset arc, instead of either detouring around stranded islands (cap too
+ * deep) or plunging to the junction center as a spike (no cap).
  */
 export function detect(img: ImageData, o: DetectOpts): Detected {
-  const { expandPx, shrinkPx, lineTol } = o
+  const { shrinkPx, lineTol } = o
   const W = img.width
   const H = img.height
   const n = W * H
@@ -213,7 +222,53 @@ export function detect(img: ImageData, o: DetectOpts): Detected {
     return [(((best >> 8) & 15) << 4) | 8, (((best >> 4) & 15) << 4) | 8, ((best & 15) << 4) | 8]
   }
 
-  // Voronoi expansion into line pixels, capped at expandPx.
+  // Distance transform of the line network: for each line pixel, its depth
+  // (4-connected) from the nearest non-line pixel. Ridge pixels — local maxima
+  // of that field — are the medial axis; their median depth estimates the
+  // half-width of a typical line.
+  const lineDist = new Uint16Array(n).fill(0xffff)
+  const q0 = new Int32Array(n)
+  let h0 = 0, t0 = 0
+  for (let p = 0; p < n; p++) {
+    if (kind[p] !== 1) continue
+    const x = p % W
+    const y = (p / W) | 0
+    if (
+      x === 0 || x === W - 1 || y === 0 || y === H - 1 ||
+      kind[p - 1] !== 1 || kind[p + 1] !== 1 || kind[p - W] !== 1 || kind[p + W] !== 1
+    ) {
+      lineDist[p] = 1
+      q0[t0++] = p
+    }
+  }
+  while (h0 < t0) {
+    const p = q0[h0++]
+    const x = p % W
+    const y = (p / W) | 0
+    const nd = lineDist[p] + 1
+    if (x > 0 && kind[p - 1] === 1 && lineDist[p - 1] > nd) { lineDist[p - 1] = nd; q0[t0++] = p - 1 }
+    if (x < W - 1 && kind[p + 1] === 1 && lineDist[p + 1] > nd) { lineDist[p + 1] = nd; q0[t0++] = p + 1 }
+    if (y > 0 && kind[p - W] === 1 && lineDist[p - W] > nd) { lineDist[p - W] = nd; q0[t0++] = p - W }
+    if (y < H - 1 && kind[p + W] === 1 && lineDist[p + W] > nd) { lineDist[p + 1] = nd; q0[t0++] = p + W }
+  }
+  const ridge: number[] = []
+  for (let p = 0; p < n; p++) {
+    if (kind[p] !== 1) continue
+    const v = lineDist[p]
+    if (v === 0xffff) continue
+    const x = p % W
+    const y = (p / W) | 0
+    if (
+      (x > 0 && lineDist[p - 1] > v) || (x < W - 1 && lineDist[p + 1] > v) ||
+      (y > 0 && lineDist[p - W] > v) || (y < H - 1 && lineDist[p + W] > v)
+    ) continue // strictly uphill neighbor => not on the ridge
+    ridge.push(v)
+  }
+  ridge.sort((a, b) => a - b)
+  const reachPx = ridge.length ? ridge[(ridge.length / 2) | 0] : 0
+
+  // Voronoi expansion into line pixels, capped at the measured half-width so
+  // boundaries land on line centers without overrunning junction interiors.
   const dist = new Uint16Array(n).fill(0xffff)
   const q = new Int32Array(n)
   let qh = 0
@@ -226,7 +281,7 @@ export function detect(img: ImageData, o: DetectOpts): Detected {
   }
   while (qh < qt) {
     const p = q[qh++]
-    if (dist[p] >= expandPx) continue
+    if (dist[p] >= reachPx) continue
     const x = p % W
     const y = (p / W) | 0
     if (x > 0 && labels[p - 1] === -1 && kind[p - 1] === 1) {
@@ -261,7 +316,7 @@ export function detect(img: ImageData, o: DetectOpts): Detected {
   const vx = (v: number) => v % VW
   const vy = (v: number) => (v / VW) | 0
 
-  const traceAll = (): Map<number, Pt[][]> => {
+  const traceAll = (lab: Int32Array): Map<number, Pt[][]> => {
     const edgeMaps = new Map<number, Map<number, number[]>>()
     const addEdge = (m: Map<number, number[]>, x0: number, y0: number, x1: number, y1: number) => {
       const s = vid(x0, y0)
@@ -273,14 +328,14 @@ export function detect(img: ImageData, o: DetectOpts): Detected {
       arr.push(vid(x1, y1))
     }
     for (let p = 0; p < n; p++) {
-      const L = labels[p]
+      const L = lab[p]
       if (L < 0) continue
       const x = p % W
       const y = (p / W) | 0
-      const t = y === 0 || labels[p - W] !== L
-      const r = x === W - 1 || labels[p + 1] !== L
-      const b = y === H - 1 || labels[p + W] !== L
-      const l = x === 0 || labels[p - 1] !== L
+      const t = y === 0 || lab[p - W] !== L
+      const r = x === W - 1 || lab[p + 1] !== L
+      const b = y === H - 1 || lab[p + W] !== L
+      const l = x === 0 || lab[p - 1] !== L
       if (!(t || r || b || l)) continue
       let m = edgeMaps.get(L)
       if (!m) {
@@ -359,7 +414,45 @@ export function detect(img: ImageData, o: DetectOpts): Detected {
   }
 
   // pattern-space outlines at line centers
-  const patternLoops = traceAll()
+  const patternLoops = traceAll(labels)
+
+  // Lead work: every connected line-pixel region, traced at the art's own
+  // outer edge. The PDF fills these black and the preview erases them to
+  // transparent, so thin runs and thick junctions render as one uniform
+  // lead network — no white rims or core-only blobs.
+  const leadLabels = new Int32Array(n).fill(-1)
+  let lcount = 0
+  for (let i = 0; i < n; i++) {
+    if (kind[i] !== 1 || leadLabels[i] >= 0) continue
+    let sp = 0
+    stack[sp++] = i
+    leadLabels[i] = lcount
+    while (sp > 0) {
+      const p = stack[--sp]
+      const x = p % W
+      const y = (p / W) | 0
+      if (x > 0 && kind[p - 1] === 1 && leadLabels[p - 1] < 0) {
+        leadLabels[p - 1] = lcount
+        stack[sp++] = p - 1
+      }
+      if (x < W - 1 && kind[p + 1] === 1 && leadLabels[p + 1] < 0) {
+        leadLabels[p + 1] = lcount
+        stack[sp++] = p + 1
+      }
+      if (y > 0 && kind[p - W] === 1 && leadLabels[p - W] < 0) {
+        leadLabels[p - W] = lcount
+        stack[sp++] = p - W
+      }
+      if (y < H - 1 && kind[p + W] === 1 && leadLabels[p + W] < 0) {
+        leadLabels[p + W] = lcount
+        stack[sp++] = p + W
+      }
+    }
+    lcount++
+  }
+  const leadLoopsPx = lcount
+    ? [...traceAll(leadLabels).values()].map((loops) => finalize(loops))
+    : []
 
   // Background frame detection: a component that touches the image border AND
   // encloses a hole covering a big share of the canvas AND containing other
@@ -440,7 +533,7 @@ export function detect(img: ImageData, o: DetectOpts): Detected {
     for (let p = 0; p < n; p++) {
       if (labels[p] >= 0 && dist2[p] < shrinkPx) labels[p] = -1
     }
-    guideLoops = traceAll()
+    guideLoops = traceAll(labels)
   }
 
   const pieces: RawPiece[] = []
@@ -462,5 +555,5 @@ export function detect(img: ImageData, o: DetectOpts): Detected {
     })
   }
 
-  return { pieces, lineRgb, bgLoopsPx, width: W, height: H, background: bgIds.size }
+  return { pieces, lineRgb, bgLoopsPx, leadLoopsPx, width: W, height: H, background: bgIds.size }
 }

@@ -3,7 +3,7 @@ import { runDetect } from '../src/pipeline'
 import { mkImg, RED, BLACK } from './helpers'
 import { signedArea } from '../src/geom'
 
-const P = { minAreaMm2: 3, expandPx: 10, simplifyMm: 0.15, guideShrinkMm: 0, lineTol: 48, paletteTol: 24 }
+const P = { minAreaMm2: 3, simplifyMm: 0.15, guideShrinkMm: 0, lineTol: 48, paletteTol: 24 }
 
 describe('runDetect', () => {
   const cross = mkImg(40, 40, (x, y) =>
