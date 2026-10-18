@@ -648,22 +648,50 @@ $('file').addEventListener('change', (e) => {
 })
 
 /**
+ * Opens the system file picker. Prefers the File System Access API — a
+ * separate activation path from programmatically clicking a hidden input,
+ * which some browsers/extensions suppress; falls back to the input where the
+ * API is unavailable (Firefox, Safari) or rejects for a reason other than the
+ * user cancelling.
+ */
+async function openPicker() {
+  const showPicker = (
+    window as unknown as {
+      showOpenFilePicker?: (o: {
+        types?: { description?: string; accept: Record<string, string[]> }[]
+        multiple?: boolean
+      }) => Promise<{ getFile(): Promise<File> }[]>
+    }
+  ).showOpenFilePicker
+  if (showPicker) {
+    try {
+      const [handle] = await showPicker({
+        types: [{ description: 'PNG image', accept: { 'image/png': ['.png'] } }],
+        multiple: false,
+      })
+      const f = await handle?.getFile()
+      if (f) loadFile(f)
+      return
+    } catch (e) {
+      if ((e as DOMException).name === 'AbortError') return // user cancelled
+      // otherwise fall through to the hidden input
+    }
+  }
+  $('file').value = '' // allow re-picking the same file
+  $('file').click()
+}
+
+/**
  * Wire a dropzone element (hero landing + the mini one in Input): click opens
- * the shared hidden file input; a dropped PNG loads directly. Non-PNG drops
- * flash a rejection style.
+ * the file picker; a dropped PNG loads directly. Non-PNG drops flash a
+ * rejection style.
  */
 function wireDropzone(el: HTMLElement) {
-  el.addEventListener('click', (e) => {
-    // labels pointing at #file activate the picker natively — no JS needed
-    if ((e.target as HTMLElement).closest('label')) return
-    $('file').value = '' // allow re-picking the same file
-    $('file').click()
-  })
+  el.addEventListener('click', () => openPicker())
   el.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return
     e.preventDefault()
-    $('file').value = ''
-    $('file').click()
+    openPicker()
   })
   el.addEventListener('dragover', (e) => {
     e.preventDefault()
