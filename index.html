@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <title>Stained Glass Pattern Tool</title>
+  </head>
+  <body>
+    <div id="app">
+      <aside id="controls">
+        <header class="brand">
+          <svg viewBox="0 0 32 32" aria-hidden="true">
+            <g stroke="#0e0e11" stroke-width="1.4" stroke-linejoin="round">
+              <path d="M16 5 27 16 16 16Z" fill="#e8b34b" />
+              <path d="M27 16 16 27 16 16Z" fill="#e06c6c" />
+              <path d="M16 27 5 16 16 16Z" fill="#41b3a3" />
+              <path d="M5 16 16 5 16 16Z" fill="#9a6ee8" />
+              <path d="M16 5 27 16 16 27 5 16Z" fill="none" stroke-width="1.6" />
+              <path d="M16 5V27M5 16H27" fill="none" stroke-width="1.6" />
+            </g>
+          </svg>
+          <div>
+            <h1>Pattern Tool</h1>
+            <p>stained glass</p>
+          </div>
+        </header>
+
+        <section class="panel">
+          <h2>Input</h2>
+          <div id="dropzoneMini" class="dropzone small" role="button" tabindex="0">
+            Drop a PNG here or <span class="linkish">browse</span>
+          </div>
+          <input type="file" id="file" accept="image/png" hidden />
+          <label><span>Units</span>
+            <select id="units">
+              <option value="mm" selected>mm</option>
+              <option value="in">inches</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="panel">
+          <h2>Finished piece size</h2>
+          <label><span>Width <span class="u">mm</span></span><input id="patternWmm" type="number" value="215.9" step="0.1"></label>
+          <label><span>Height <span class="u">mm</span></span><input id="patternHmm" type="number" value="279.4" step="0.1"></label>
+        </section>
+
+        <section class="panel">
+          <h2>Paper pattern</h2>
+          <label><span>Page</span>
+            <select id="pagePreset">
+              <option value="letter" selected>Letter 8.5×11</option>
+              <option value="a4">A4 210×297</option>
+            </select>
+          </label>
+          <label><span>Overlap <span class="u">mm</span></span><input id="overlapMm" type="number" value="12" step="1"></label>
+          <label><span>Printer margin <span class="u">mm</span></span><input id="marginMm" type="number" value="0" step="0.1"></label>
+          <label><span>Print scale %</span><input id="scalePct" type="number" value="100" step="0.5"></label>
+          <label><span>Line width <span class="u">mm</span></span><input id="lineWmm" type="number" value="0.9" step="0.1"></label>
+        </section>
+
+        <section class="panel">
+          <h2>Guide plates</h2>
+          <label><span>Plate W <span class="u">mm</span></span><input id="plateW" type="number" value="256" step="1"></label>
+          <label><span>Plate H <span class="u">mm</span></span><input id="plateH" type="number" value="256" step="1"></label>
+          <label><span>Gap <span class="u">mm</span></span><input id="gapMm" type="number" value="4" step="0.5"></label>
+          <label><span>Clearance corner</span>
+            <select id="exclCorner">
+              <option value="none">none</option>
+              <option value="tl">top-left</option>
+              <option value="tr" selected>top-right</option>
+              <option value="br">bottom-right</option>
+              <option value="bl">bottom-left</option>
+            </select>
+          </label>
+          <label><span>Clearance W <span class="u">mm</span></span><input id="exclW" type="number" value="40" step="1"></label>
+          <label><span>Clearance H <span class="u">mm</span></span><input id="exclH" type="number" value="40" step="1"></label>
+          <label><span>Guide height <span class="u">mm</span></span><input id="guideHmm" type="number" value="1.4" step="0.2"></label>
+          <label><span>Guide shrink <span class="u">mm</span></span><input id="guideShrinkMm" type="number" value="0" step="0.1"></label>
+          <label><span>Dot radius <span class="u">mm</span></span><input id="dotR" type="number" value="2" step="0.5"></label>
+        </section>
+
+        <section class="panel">
+          <h2>Detection</h2>
+          <label><span>Min piece <span class="u2">mm²</span></span><input id="minAreaMm2" type="number" value="3" step="0.5"></label>
+          <label><span>Line reach px</span><input id="expandPx" type="number" value="20" step="1"></label>
+          <label><span>Simplify <span class="u">mm</span></span><input id="simplifyMm" type="number" value="0.15" step="0.05"></label>
+          <label><span>Line tolerance</span><input id="lineTol" type="number" value="48" step="4"></label>
+          <label><span>Palette merge</span><input id="paletteTol" type="number" value="24" step="4"></label>
+        </section>
+
+        <section class="panel">
+          <h2>Printer calibration</h2>
+          <div class="calibBtns">
+            <button id="calibPdf">calibration.pdf</button>
+            <button id="calibStl">calibration-bar.stl</button>
+          </div>
+          <ol class="calibSteps">
+            <li>Print the PDF at 100% / "Actual size"</li>
+            <li>Print the bar STL at 100% (non-white filament)</li>
+            <li>Lay the bar in the dashed lane, top-aligned with the box</li>
+            <li>Photograph the whole page straight-on, upload below</li>
+          </ol>
+          <input type="file" id="calibPhoto" accept="image/*" />
+          <div id="calibResult"></div>
+          <canvas id="calibCanvas"></canvas>
+        </section>
+
+        <div id="status"></div>
+
+        <section class="panel">
+          <h2>Export</h2>
+          <div id="downloads"></div>
+        </section>
+      </aside>
+
+      <main id="preview">
+        <div id="emptyState">
+          <svg class="hero-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <g stroke="#0e0e11" stroke-width="0.9" stroke-linejoin="round">
+              <path d="M16 5 27 16 16 16Z" fill="#e8b34b" />
+              <path d="M27 16 16 27 16 16Z" fill="#e06c6c" />
+              <path d="M16 27 5 16 16 16Z" fill="#41b3a3" />
+              <path d="M5 16 16 5 16 16Z" fill="#9a6ee8" />
+              <path d="M16 5 27 16 16 27 5 16Z" fill="none" />
+              <path d="M16 5V27M5 16H27" fill="none" />
+            </g>
+          </svg>
+          <h1>Stained Glass Pattern Tool</h1>
+          <p class="lede">
+            Turn a colored pattern PNG into numbered glass pieces, a tiled
+            print-ready pattern PDF, and 3D-printable cutting guides.
+          </p>
+          <div id="dropzone" class="dropzone">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 16V4m0 0 4 4m-4-4-4 4" />
+              <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+            </svg>
+            <p><strong>Drop your pattern PNG here</strong></p>
+            <p class="muted">or</p>
+            <button id="browse" class="primary" type="button">Browse files</button>
+            <p class="hint">PNG only · runs entirely in your browser, nothing is uploaded</p>
+          </div>
+        </div>
+
+        <div id="loadedState">
+          <section id="patternPane">
+            <h2>Glass palette</h2>
+            <div id="paletteHost"></div>
+            <h2>Pieces</h2>
+            <canvas id="piecesCanvas"></canvas>
+          </section>
+          <section id="platesPane">
+            <h2>Plates</h2>
+            <div id="plates"></div>
+          </section>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
