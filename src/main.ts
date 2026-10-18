@@ -653,7 +653,9 @@ $('file').addEventListener('change', (e) => {
  * flash a rejection style.
  */
 function wireDropzone(el: HTMLElement) {
-  el.addEventListener('click', () => {
+  el.addEventListener('click', (e) => {
+    // labels pointing at #file activate the picker natively — no JS needed
+    if ((e.target as HTMLElement).closest('label')) return
     $('file').value = '' // allow re-picking the same file
     $('file').click()
   })

@@ -30,9 +30,8 @@
         <section class="panel">
           <h2>Input</h2>
           <div id="dropzoneMini" class="dropzone small" role="button" tabindex="0">
-            Drop a PNG here or <span class="linkish">browse</span>
+            Drop a PNG here or <label for="file" class="linkish">browse</label>
           </div>
-          <input type="file" id="file" accept="image/png" hidden />
           <label><span>Units</span>
             <select id="units">
               <option value="mm" selected>mm</option>
@@ -117,6 +116,8 @@
       </aside>
 
       <main id="preview">
+        <!-- rendered-but-invisible: Safari refuses clicks on display:none file inputs -->
+        <input type="file" id="file" class="visually-hidden" accept="image/png" />
         <div id="emptyState">
           <svg class="hero-mark" viewBox="0 0 32 32" aria-hidden="true">
             <g stroke="#0e0e11" stroke-width="0.9" stroke-linejoin="round">
@@ -140,7 +141,7 @@
             </svg>
             <p><strong>Drop your pattern PNG here</strong></p>
             <p class="muted">or</p>
-            <button id="browse" class="primary" type="button">Browse files</button>
+            <label for="file" id="browse" class="primary">Browse files</label>
             <p class="hint">PNG only · runs entirely in your browser, nothing is uploaded</p>
           </div>
         </div>
